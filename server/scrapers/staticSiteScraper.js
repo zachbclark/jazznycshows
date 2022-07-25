@@ -3,22 +3,61 @@ const fs = require("fs");
 const path = require("path");
 const pretty = require("pretty");
 const axios = require("axios");
-const { contains } = require("cheerio");
+//const { contains } = require("cheerio");
 
 const dataDir = path.join(__dirname, "../data/");
 
-// URL of the page we want to scrape
-const url =
-  "https://www.jazzgallery.org/calendar";
+const url = 'https://www.jazzgallery.org/calendar';
 
 const scrapeStaticWebpage = async () => {
-  try {
-    const { data } = await axios.get(url);
-    // pass data to processData(function) for further processing using cheerio;
-    // console.log(data);
+    try {
+      const { data } = await axios.get(url);
+      processData(data);
+    } catch (err) {
+      console.log("error", err);
+    }
+};
 
+function processData(data) {
+    const $ = cheerio.load(data);
+    const items = [];
+  
+    // after you can target what you want by inspecting page source.
+    const list = $('.eventlist.eventlist--upcoming').find('article');
+
+    list.each(function (i, element) {
+        const targeted = $(element);
+
+        const title = targeted.find('.eventlist-title').find('a').text().trim();        
+        const dates = targeted.find('.event-date').map((i, x) => $(x).attr('datetime')).toArray();
+        const link = 'https://www.jazzgallery.org' + targeted.find('.eventlist-title').find('a').attr('href');
+        const bandMembers = targeted.find('.eventlist-excerpt').find('p').first().html().trim().split(/<br\s*\/?>/i);
+        const bandObject = bandMembers.map(item => {
+          const container = {};
+          const nameInstrumentPair = item.replace(/<\/em>/ig, '').trim().replace('-', '').replace(' &amp;', ',').split(/<em\s*\/?>/i);
+
+          container.name = nameInstrumentPair[0].trim();
+          container.instruments = nameInstrumentPair[1];
+
+          return container;
+        });
+
+        const item = {
+            title,
+            dates,
+            bandObject,
+            link,
+        };
+        items.push(item);
+
+    });
+    // console.log(JSON.stringify(items));
+    writeFile(items, 'jazzGalleryData')
+}
+
+function writeFile(data, fileName) {
     fs.writeFile(
-        `${dataDir}jazzGalleryData.json`,
+        `${dataDir}${fileName}.json`,
         JSON.stringify(data, null, 2),
         (err) => {
           if (err) {
@@ -28,56 +67,6 @@ const scrapeStaticWebpage = async () => {
           console.log("Successfully written data to file");
         }
       );
-
-    //processData(data);
-  } catch (err) {
-    console.log("error", err);
-  }
-};
-
-function processData(data) {
-  // console.log("Processing Data...", data);
-  // Load HTML we fetched
-  const $ = cheerio.load(data);
-  //   console.log(pretty($.html()));
-  // after you can target what you want by inspecting page source.
-  const list = $(".col-xs-6");
-  console.log(list.length);
-  const listItems = $(list.children());
-  // console.log("listItems", pretty(listItems.html()));
-  const items = [];
-  list.each(function (idx, ele) {
-    // targeting different elements etc using cheerio.
-    const targeted = $(ele);
-    // console.log("lists", idx, ele);
-    const link = targeted.find("a").attr("href");
-    const img = targeted.find("img").attr("src");
-    // trim is used to remove extra spaces.
-    const name = targeted.find("h4").text().trim();
-    const price = targeted.find("span.text-green-600").text().trim();
-    const item = {
-      id: idx + 1,
-      name: name,
-      link: link,
-      img: img,
-      price: price,
-    };
-    items.push(item);
-  });
-  // Logs items array to the console
-  // console.dir(items);
-  // Write items array in itemsData.json file
-  fs.writeFile(
-    `${dataDir}ishoppingData.json`,
-    JSON.stringify(items, null, 2),
-    (err) => {
-      if (err) {
-        console.error(err);
-        return;
-      }
-      console.log("Successfully written data to file");
-    }
-  );
 }
 
 module.exports = scrapeStaticWebpage;
